@@ -1,97 +1,112 @@
 const express = require("express");
-const crypto = require("crypto");
+const crypto  = require("crypto");
+const https   = require("https");
 
 const app = express();
 app.use(express.json());
 
-const API_KEY    = process.env."name": "organizations/81638aa8-cec3-4302-ab61-81f6571245bf/apiKeys/0ca7c925-d95d-4a45-9aa9-103d8dbaf921",;
-const API_SECRET = process.env.-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIFh9C1/QaF6SN/R28b/U3jZ4OQpG8sz1yQkNkEqJJK4GoAoGCCqGSM49\nAwEHoUQDQgAEvnfo3LhrlB8tCYrxL7nH4XxsI28aetKoqAX1reLZMs4BN4xyaZP/\neCmr9JG+x25pKoRqgti5sxs/naNxavPKkg==\n-----END EC PRIVATE KEY-----\n"
-};
-const WEBHOOK_SECRET = process.env.Supertrend_Bot || "";
+const API_KEY        = process.env.COINBASE_API_KEY;
+const API_SECRET     = process.env.COINBASE_API_SECRET;
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 
 function signRequest(method, path, body) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const message   = timestamp + method.toUpperCase() + path + (body || "");
-  const signature = crypto
-    .createHmac("sha256", API_SECRET)
-    .update(message)
-    .digest("hex");
+  const signature = crypto.createHmac("sha256", API_SECRET).update(message).digest("hex");
   return { timestamp, signature };
 }
 
-async function placeOrder(productId, side, quoteSize = "10") {
-  const path   = "/api/v3/brokerage/orders";
-  const url    = "https://api.coinbase.com" + path;
-  const clientOrderId = `supertrend-${Date.now()}`;
-
-  const bodyObj = {
-    client_order_id: clientOrderId,
-    product_id: productId,
-    side: side.toUpperCase(),
-    order_configuration: {
-      market_market_ioc: {
-        ...(side.toUpperCase() === "BUY"
-          ? { quote_size: quoteSize }
-          : { base_size: process.env.BASE_SIZE || "10" }),
+function cbRequest(method, path, bodyObj) {
+  return new Promise((resolve, reject) => {
+    const bodyStr = bodyObj ? JSON.stringify(bodyObj) : "";
+    const { timestamp, signature } = signRequest(method, path, bodyStr);
+    const options = {
+      hostname: "api.coinbase.com",
+      path,
+      method,
+      headers: {
+        "Content-Type":        "application/json",
+        "CB-ACCESS-KEY":       API_KEY,
+        "CB-ACCESS-SIGN":      signature,
+        "CB-ACCESS-TIMESTAMP": timestamp,
+        "Content-Length":      Buffer.byteLength(bodyStr),
       },
-    },
-  };
-
-  const bodyStr        = JSON.stringify(bodyObj);
-  const { timestamp, signature } = signRequest("POST", path, bodyStr);
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "CB-ACCESS-KEY":        API_KEY,
-      "CB-ACCESS-SIGN":       signature,
-      "CB-ACCESS-TIMESTAMP":  timestamp,
-    },
-    body: bodyStr,
+    };
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on("error", reject);
+    if (bodyStr) req.write(bodyStr);
+    req.end();
   });
-
-  const data = await res.json();
-  return data;
 }
 
-// Health check
+async function getUSDBalance() {
+  const data = await cbRequest("GET", "/api/v3/brokerage/accounts", null);
+  const acc = data.accounts?.find(a => a.currency === "USD");
+  return parseFloat(acc?.available_balance?.value || "0");
+}
+
+async function getXRPBalance() {
+  const data = await cbRequest("GET", "/api/v3/brokerage/accounts", null);
+  const acc = data.accounts?.find(a => a.currency === "XRP");
+  return parseFloat(acc?.available_balance?.value || "0");
+}
+
+async function placeOrder(productId, side, sizeConfig) {
+  return cbRequest("POST", "/api/v3/brokerage/orders", {
+    client_order_id: `supertrend-${Date.now()}`,
+    product_id: productId,
+    side: side.toUpperCase(),
+    order_configuration: { market_market_ioc: sizeConfig },
+  });
+}
+
 app.get("/", (req, res) => res.send("Supertrend bot is live ✅"));
 
-// Webhook endpoint
 app.post("/webhook", async (req, res) => {
   try {
-    // Optional secret check
-    if (WEBHOOK_SECRET) {
-      const incoming = req.headers["x-webhook-secret"];
-      if (incoming !== WEBHOOK_SECRET) {
-        console.warn("Unauthorized webhook attempt");
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-    }
+    const { action, symbol, secret, price, time } = req.body;
 
-    const { action, symbol } = req.body;
+    if (WEBHOOK_SECRET && secret !== WEBHOOK_SECRET) {
+      console.warn("Unauthorized webhook attempt");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
     if (!action || !symbol) {
       return res.status(400).json({ error: "Missing action or symbol" });
     }
 
-    // Convert TV ticker to Coinbase product id e.g. XRPUSD → XRP-USD
-    const productId = symbol.replace(/([A-Z]+)(USD|USDT|BTC|ETH)$/, "$1-$2");
-
-    console.log(`Signal received: ${action.toUpperCase()} ${productId} @ ${new Date().toISOString()}`);
+    const productId = symbol.replace(/([A-Z]+)(USDT?|BTC|ETH)$/, "$1-$2");
+    console.log(`Signal: ${action.toUpperCase()} ${productId} @ ${price} [${time}]`);
 
     let result;
 
     if (action === "buy") {
-      const quoteSize = process.env.QUOTE_SIZE || "10"; // USD amount to spend
-      result = await placeOrder(productId, "BUY", quoteSize);
-      console.log("BUY order placed:", JSON.stringify(result, null, 2));
+      const usdBalance = await getUSDBalance();
+      const quoteSize  = (usdBalance * 0.05).toFixed(2);
+      if (parseFloat(quoteSize) < 1) {
+        return res.status(200).json({ status: "skipped", reason: "balance too low" });
+      }
+      console.log(`USD balance: $${usdBalance} -> Spending: $${quoteSize}`);
+      result = await placeOrder(productId, "BUY", { quote_size: quoteSize });
+      console.log("BUY placed:", JSON.stringify(result));
     }
 
     if (action === "sell") {
-      result = await placeOrder(productId, "SELL");
-      console.log("SELL order placed:", JSON.stringify(result, null, 2));
+      const xrpBalance = await getXRPBalance();
+      const baseSize   = xrpBalance.toFixed(6);
+      if (parseFloat(baseSize) < 0.01) {
+        return res.status(200).json({ status: "skipped", reason: "no XRP to sell" });
+      }
+      console.log(`XRP balance: ${xrpBalance} -> Selling all`);
+      result = await placeOrder(productId, "SELL", { base_size: baseSize });
+      console.log("SELL placed:", JSON.stringify(result));
     }
 
     res.status(200).json({ status: "ok", result });
@@ -103,4 +118,4 @@ app.post("/webhook", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Bot listening on port ${PORT}`));
+app.listen(PORT, () => console.log(`Supertrend bot live on port ${PORT}`));
