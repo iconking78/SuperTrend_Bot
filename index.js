@@ -148,7 +148,12 @@ async function checkSignal() {
 }
 
 // Run immediately then every 5 minutes
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Bot live on port ${PORT}`);
+});   
+
 checkSignal();
 setInterval(checkSignal, 5 * 60 * 1000);
 console.log(`Signal checker running | ${SYMBOL} | ATR:${ATR_PERIOD} Factor:${FACTOR}`);
-    
+ 
