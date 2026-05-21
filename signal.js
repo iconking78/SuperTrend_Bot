@@ -2,7 +2,7 @@ const https = require("https");
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 const WEBHOOK_URL    = process.env.WEBHOOK_URL || "https://supertrend-bot-64nr.onrender.com/webhook";
-const SYMBOL         = process.env.SYMBOL || "XRP-USD";
+const SYMBOL         = process.env.SYMBOL || "XRP-USDC";
 const ATR_PERIOD     = parseInt(process.env.ATR_PERIOD || "7");
 const FACTOR         = parseFloat(process.env.FACTOR || "1.0");
 
