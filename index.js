@@ -1,17 +1,18 @@
-      const express = require("express");
+const express = require("express");
 const crypto  = require("crypto");
 const https   = require("https");
+const jwt     = require("jsonwebtoken");
 
 const app = express();
 app.use(express.json());
 
-const API_KEY        = process.env.COINBASE_API_KEY;
-const API_SECRET_RAW = process.env.COINBASE_API_SECRET || "";
+const API_KEY        = (process.env.COINBASE_API_KEY || "").trim();
+const API_SECRET_RAW = (process.env.COINBASE_API_SECRET || "").trim();
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 const TG_TOKEN       = process.env.TELEGRAM_TOKEN || "";
 const TG_CHAT_ID     = process.env.TELEGRAM_CHAT_ID || "";
 
-// Normalize secret — handle literal \n stored as text
+// Normalize secret key newlines
 const API_SECRET = API_SECRET_RAW.replace(/\\n/g, "\n");
 
 function sendTelegram(message) {
@@ -28,24 +29,39 @@ function sendTelegram(message) {
   req.end();
 }
 
-function signRequest(method, path, body) {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const message   = timestamp + method.toUpperCase() + path + (body || "");
-  const signature = crypto.createHmac("sha256", API_SECRET).update(message).digest("hex");
-  return { timestamp, signature };
+// JWT authentication for Coinbase Advanced Trade
+function makeJWT(method, path) {
+  const uri = `${method} api.coinbase.com${path}`;
+  return jwt.sign(
+    {
+      sub: API_KEY,
+      iss: "cdp",
+      nbf: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 120,
+      uri,
+    },
+    API_SECRET,
+    {
+      algorithm: "ES256",
+      header: { kid: API_KEY, nonce: crypto.randomBytes(16).toString("hex") },
+    }
+  );
 }
 
 function cbRequest(method, path, bodyObj) {
   return new Promise((resolve, reject) => {
     const bodyStr = bodyObj ? JSON.stringify(bodyObj) : "";
-    const { timestamp, signature } = signRequest(method, path, bodyStr);
+    let token;
+    try {
+      token = makeJWT(method, path);
+    } catch(e) {
+      return reject(new Error(`JWT sign failed: ${e.message}`));
+    }
     const req = https.request({
       hostname: "api.coinbase.com", path, method,
       headers: {
-        "Content-Type": "application/json",
-        "CB-ACCESS-KEY": API_KEY,
-        "CB-ACCESS-SIGN": signature,
-        "CB-ACCESS-TIMESTAMP": timestamp,
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${token}`,
         "Content-Length": Buffer.byteLength(bodyStr),
       },
     }, (res) => {
@@ -85,7 +101,6 @@ async function placeOrder(productId, side, sizeConfig) {
 
 app.get("/", (req, res) => res.send("Supertrend bot is live ✅"));
 
-// Test endpoint to verify Coinbase connection
 app.get("/test", async (req, res) => {
   try {
     const usd = await getUSDBalance();
