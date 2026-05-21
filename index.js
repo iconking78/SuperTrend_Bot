@@ -111,6 +111,20 @@ app.get("/test", async (req, res) => {
   }
 });
 
+app.get("/accounts", async (req, res) => {
+  try {
+    const data = await cbRequest("GET", "/api/v3/brokerage/accounts", null);
+    const accounts = (data.accounts || []).map(a => ({
+      currency: a.currency,
+      available: a.available_balance?.value,
+      name: a.name,
+    }));
+    res.json({ total: accounts.length, accounts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/webhook", async (req, res) => {
   try {
     const { action, symbol, secret, price, time } = req.body;
