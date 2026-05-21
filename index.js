@@ -93,7 +93,8 @@ async function getAllAccounts() {
 
 async function getUSDBalance() {
   const accounts = await getAllAccounts();
-  const acc = accounts.find(a => a.currency === "USD");
+  const acc = accounts.find(a => a.currency === "USDC");
+  console.log("USDC account:", JSON.stringify(acc));
   return parseFloat(acc?.available_balance?.value || "0");
 }
 
@@ -164,10 +165,15 @@ app.post("/webhook", async (req, res) => {
     console.log(`Signal: ${action.toUpperCase()} ${productId} @ ${price}`);
     let result;
     if (action === "buy") {
-      const quoteSize = process.env.TRADE_SIZE_USD || "7.50";
+      const usdcBalance = await getUSDBalance();
+      const quoteSize   = (usdcBalance * 0.05).toFixed(2);
+      if (parseFloat(quoteSize) < 1) {
+        sendTelegram(`⚠️ <b>BUY SKIPPED</b>\nSymbol: ${productId}\nReason: USDC balance too low ($${usdcBalance})`);
+        return res.status(200).json({ status: "skipped", reason: "balance too low" });
+      }
       result = await placeOrder(productId, "BUY", { quote_size: quoteSize });
       console.log("BUY placed:", JSON.stringify(result));
-      sendTelegram(`🟢 <b>BUY EXECUTED</b>\nSymbol: ${productId}\nPrice: $${price}\nSpent: $${quoteSize}\nTime: ${time}`);
+      sendTelegram(`🟢 <b>BUY EXECUTED</b>\nSymbol: ${productId}\nPrice: $${price}\nSpent: $${quoteSize} (5% of $${usdcBalance.toFixed(2)} USDC)\nTime: ${time}`);
     }
     if (action === "sell") {
       const xrpBalance = await getXRPBalance();
