@@ -199,5 +199,6 @@ require("./signal.js");
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
-  sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USD on 15m chart\nATR: 7 | Factor: 1.0`);
+  sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USDC on 15m chart\nATR: 7 | Factor: 1.0`);
 });
+          
