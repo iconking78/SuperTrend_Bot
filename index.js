@@ -31,7 +31,10 @@ function sendTelegram(message) {
 
 // JWT authentication for Coinbase Advanced Trade
 function makeJWT(method, path) {
-  const uri = `${method} api.coinbase.com${path}`;
+  // Strip query params from URI for JWT
+  const cleanPath = path.split("?")[0];
+  const uri = `${method.toUpperCase()} api.coinbase.com${cleanPath}`;
+  const nonce = crypto.randomBytes(16).toString("hex");
   return jwt.sign(
     {
       sub: API_KEY,
@@ -39,11 +42,12 @@ function makeJWT(method, path) {
       nbf: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 120,
       uri,
+      nonce,
     },
     API_SECRET,
     {
       algorithm: "ES256",
-      header: { kid: API_KEY, nonce: crypto.randomBytes(16).toString("hex") },
+      header: { kid: API_KEY, alg: "ES256" },
     }
   );
 }
@@ -201,4 +205,3 @@ app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
   sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USDC on 15m chart\nATR: 7 | Factor: 1.0`);
 });
-          
