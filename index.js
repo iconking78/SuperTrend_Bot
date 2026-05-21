@@ -129,6 +129,16 @@ app.get("/test", async (req, res) => {
   }
 });
 
+app.get("/testorder", async (req, res) => {
+  try {
+    // Place a tiny $1.50 test buy order
+    const result = await placeOrder("XRP-USDC", "BUY", { quote_size: "1.50" });
+    res.json({ status: "ok", result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/raw", async (req, res) => {
   try {
     const data = await cbRequest("GET", "/api/v3/brokerage/accounts?limit=250", null);
@@ -205,3 +215,4 @@ app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
   sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USDC on 15m chart\nATR: 7 | Factor: 1.0`);
 });
+
