@@ -78,15 +78,28 @@ function cbRequest(method, path, bodyObj) {
   });
 }
 
+
+async function getAllAccounts() {
+  let accounts = [];
+  let cursor = null;
+  do {
+    const path = "/api/v3/brokerage/accounts?limit=250" + (cursor ? "&cursor=" + cursor : "");
+    const data = await cbRequest("GET", path, null);
+    accounts = accounts.concat(data.accounts || []);
+    cursor = data.has_next ? data.cursor : null;
+  } while (cursor);
+  return accounts;
+}
+
 async function getUSDBalance() {
-  const data = await cbRequest("GET", "/api/v3/brokerage/accounts", null);
-  const acc = data.accounts?.find(a => a.currency === "USD");
+  const accounts = await getAllAccounts();
+  const acc = accounts.find(a => a.currency === "USD");
   return parseFloat(acc?.available_balance?.value || "0");
 }
 
 async function getXRPBalance() {
-  const data = await cbRequest("GET", "/api/v3/brokerage/accounts", null);
-  const acc = data.accounts?.find(a => a.currency === "XRP");
+  const accounts = await getAllAccounts();
+  const acc = accounts.find(a => a.currency === "XRP");
   return parseFloat(acc?.available_balance?.value || "0");
 }
 
