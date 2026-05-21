@@ -1,4 +1,4 @@
-const express = require("express");
+          const express = require("express");
 const crypto  = require("crypto");
 const https   = require("https");
 const jwt     = require("jsonwebtoken");
@@ -83,7 +83,7 @@ async function getAllAccounts() {
   let accounts = [];
   let cursor = null;
   do {
-    const path = "/api/v3/brokerage/accounts?limit=250" + (cursor ? "&cursor=" + cursor : "");
+    const path = "/api/v3/brokerage/accounts?limit=250&retail_portfolio_id=DEFAULT" + (cursor ? "&cursor=" + cursor : "");
     const data = await cbRequest("GET", path, null);
     accounts = accounts.concat(data.accounts || []);
     cursor = data.has_next ? data.cursor : null;
@@ -126,13 +126,21 @@ app.get("/test", async (req, res) => {
 
 app.get("/accounts", async (req, res) => {
   try {
-    const data = await cbRequest("GET", "/api/v3/brokerage/accounts", null);
-    const accounts = (data.accounts || []).map(a => ({
+    const all = await getAllAccounts();
+    const accounts = all.map(a => ({
       currency: a.currency,
       available: a.available_balance?.value,
+      hold: a.hold?.value,
       name: a.name,
+      type: a.type,
+      uuid: a.uuid,
     }));
-    res.json({ total: accounts.length, accounts });
+    // Also try payment methods for fiat
+    let fiat = null;
+    try {
+      fiat = await cbRequest("GET", "/api/v3/brokerage/payment_methods", null);
+    } catch(e) {}
+    res.json({ total: accounts.length, accounts, fiat_methods: fiat?.payment_methods?.map(p => ({ name: p.name, type: p.type, currency: p.currency, available: p.allow_buy })) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
