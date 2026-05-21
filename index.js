@@ -1,4 +1,4 @@
-    const express = require("express");
+      const express = require("express");
 const crypto  = require("crypto");
 const https   = require("https");
 
@@ -6,10 +6,13 @@ const app = express();
 app.use(express.json());
 
 const API_KEY        = process.env.COINBASE_API_KEY;
-const API_SECRET     = process.env.COINBASE_API_SECRET;
+const API_SECRET_RAW = process.env.COINBASE_API_SECRET || "";
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 const TG_TOKEN       = process.env.TELEGRAM_TOKEN || "";
 const TG_CHAT_ID     = process.env.TELEGRAM_CHAT_ID || "";
+
+// Normalize secret — handle literal \n stored as text
+const API_SECRET = API_SECRET_RAW.replace(/\\n/g, "\n");
 
 function sendTelegram(message) {
   if (!TG_TOKEN || !TG_CHAT_ID) return;
@@ -48,7 +51,10 @@ function cbRequest(method, path, bodyObj) {
     }, (res) => {
       let data = "";
       res.on("data", c => data += c);
-      res.on("end", () => { try { resolve(JSON.parse(data)); } catch(e) { reject(e); } });
+      res.on("end", () => {
+        try { resolve(JSON.parse(data)); }
+        catch(e) { reject(new Error(`Coinbase response: ${data}`)); }
+      });
     });
     req.on("error", reject);
     if (bodyStr) req.write(bodyStr);
@@ -78,6 +84,17 @@ async function placeOrder(productId, side, sizeConfig) {
 }
 
 app.get("/", (req, res) => res.send("Supertrend bot is live ✅"));
+
+// Test endpoint to verify Coinbase connection
+app.get("/test", async (req, res) => {
+  try {
+    const usd = await getUSDBalance();
+    const xrp = await getXRPBalance();
+    res.json({ status: "ok", usd_balance: usd, xrp_balance: xrp });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post("/webhook", async (req, res) => {
   try {
@@ -117,7 +134,6 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// Start signal checker
 require("./signal.js");
 
 const PORT = process.env.PORT || 3000;
