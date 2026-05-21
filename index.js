@@ -164,15 +164,10 @@ app.post("/webhook", async (req, res) => {
     console.log(`Signal: ${action.toUpperCase()} ${productId} @ ${price}`);
     let result;
     if (action === "buy") {
-      const usdBalance = await getUSDBalance();
-      const quoteSize  = (usdBalance * 0.05).toFixed(2);
-      if (parseFloat(quoteSize) < 1) {
-        sendTelegram(`⚠️ <b>BUY SKIPPED</b>\nSymbol: ${productId}\nReason: USD balance too low ($${usdBalance})`);
-        return res.status(200).json({ status: "skipped", reason: "balance too low" });
-      }
+      const quoteSize = process.env.TRADE_SIZE_USD || "7.50";
       result = await placeOrder(productId, "BUY", { quote_size: quoteSize });
       console.log("BUY placed:", JSON.stringify(result));
-      sendTelegram(`🟢 <b>BUY EXECUTED</b>\nSymbol: ${productId}\nPrice: $${price}\nSpent: $${quoteSize} (5% of $${usdBalance.toFixed(2)})\nTime: ${time}`);
+      sendTelegram(`🟢 <b>BUY EXECUTED</b>\nSymbol: ${productId}\nPrice: $${price}\nSpent: $${quoteSize}\nTime: ${time}`);
     }
     if (action === "sell") {
       const xrpBalance = await getXRPBalance();
@@ -200,4 +195,3 @@ app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
   sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USD on 15m chart\nATR: 7 | Factor: 1.0`);
 });
-           
