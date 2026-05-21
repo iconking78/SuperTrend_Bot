@@ -1,4 +1,4 @@
-          const express = require("express");
+const express = require("express");
 const crypto  = require("crypto");
 const https   = require("https");
 const jwt     = require("jsonwebtoken");
@@ -124,6 +124,15 @@ app.get("/test", async (req, res) => {
   }
 });
 
+app.get("/raw", async (req, res) => {
+  try {
+    const data = await cbRequest("GET", "/api/v3/brokerage/accounts?limit=250", null);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/accounts", async (req, res) => {
   try {
     const all = await getAllAccounts();
@@ -191,3 +200,4 @@ app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
   sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USD on 15m chart\nATR: 7 | Factor: 1.0`);
 });
+           
