@@ -1,4 +1,4 @@
-const express = require("express");
+   const express = require("express");
 const https   = require("https");
 const { CBAdvancedTradeClient } = require("coinbase-api");
 
@@ -83,6 +83,38 @@ app.get("/test", async (req, res) => {
 
 
 
+// Manual state control — sync bot with chart after restart
+app.get("/setstate", (req, res) => {
+  const { action } = req.query;
+  if (!["buy", "sell", "none"].includes(action)) {
+    return res.status(400).json({ error: "action must be buy, sell, or none" });
+  }
+  const fs = require("fs");
+  const STATE_FILE = "/tmp/bot_state.json";
+  if (action === "none") {
+    try { require("fs").unlinkSync(STATE_FILE); } catch(e) {}
+    return res.json({ status: "ok", lastAction: "none", message: "State cleared" });
+  }
+  fs.writeFileSync(STATE_FILE, JSON.stringify({ lastAction: action, time: new Date().toISOString() }));
+  res.json({ status: "ok", lastAction: action, message: `State set to ${action}` });
+});
+
+// Status endpoint — see current bot state
+app.get("/status", (req, res) => {
+  const fs = require("fs");
+  const STATE_FILE = "/tmp/bot_state.json";
+  let state = { lastAction: "none" };
+  try { state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch(e) {}
+  res.json({
+    status: "live",
+    symbol: process.env.SYMBOL || "XRP-USDC",
+    lastAction: state.lastAction || "none",
+    lastActionTime: state.time || "unknown",
+    tradeSize: process.env.TRADE_SIZE_USD || "dynamic 5%",
+    uptime: process.uptime() + "s",
+  });
+});
+
 app.post("/webhook", async (req, res) => {
   try {
     const { action, symbol, secret, price, time } = req.body;
@@ -134,3 +166,4 @@ app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
   sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USDC on 15m chart\nATR: 7 | Factor: 1.0`);
 });
+ 
