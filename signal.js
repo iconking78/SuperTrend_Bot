@@ -1,4 +1,4 @@
-const https = require("https");
+    const https = require("https");
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 const WEBHOOK_URL    = process.env.WEBHOOK_URL || "https://supertrend-bot-64nr.onrender.com/webhook";
@@ -87,8 +87,9 @@ function calcSupertrend(candles, factor, period) {
   return { direction, supertrend };
 }
 
-let lastDirection = null;
-let isFirstRun    = true;
+// Track last ACTION sent — not direction
+// This prevents repeated signals on restarts
+let lastAction = null;
 
 async function checkSignal() {
   try {
@@ -101,24 +102,25 @@ async function checkSignal() {
     const close = parseFloat(candles[len - 1].close);
     const time  = new Date().toISOString();
     console.log(`[${time}] ${SYMBOL} close: $${close} | dir: ${prev} → ${curr}`);
-    if (isFirstRun) {
-      lastDirection = curr;
-      isFirstRun    = false;
-      console.log(`Startup: watching for flips from direction (${curr})...`);
-      return;
+
+    // BUY — only if prev was bearish, curr is bullish, and last action wasn't already a buy
+    if (prev > 0 && curr < 0 && lastAction !== "buy") {
+      console.log("BUY signal detected!");
+      lastAction = "buy";
+      await httpPost(WEBHOOK_URL, { action: "buy", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
     }
-    if (curr !== lastDirection) {
-      if (prev > 0 && curr < 0) {
-        console.log("BUY signal detected!");
-        lastDirection = curr;
-        await httpPost(WEBHOOK_URL, { action: "buy", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
-      } else if (prev < 0 && curr > 0) {
-        console.log("SELL signal detected!");
-        lastDirection = curr;
-        await httpPost(WEBHOOK_URL, { action: "sell", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
-      }
+
+    // SELL — only if prev was bullish, curr is bearish, and last action wasn't already a sell
+    else if (prev < 0 && curr > 0 && lastAction !== "sell") {
+      console.log("SELL signal detected!");
+      lastAction = "sell";
+      await httpPost(WEBHOOK_URL, { action: "sell", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
     }
-    lastDirection = curr;
+
+    else {
+      console.log(`Holding — no flip detected. Last action: ${lastAction || "none"}`);
+    }
+
   } catch (err) {
     console.error("Signal check error:", err.message);
   }
