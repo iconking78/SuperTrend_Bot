@@ -1,4 +1,4 @@
-    const https = require("https");
+      const https = require("https");
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 const WEBHOOK_URL    = process.env.WEBHOOK_URL || "https://supertrend-bot-64nr.onrender.com/webhook";
@@ -87,9 +87,22 @@ function calcSupertrend(candles, factor, period) {
   return { direction, supertrend };
 }
 
-// Track last ACTION sent — not direction
-// This prevents repeated signals on restarts
-let lastAction = null;
+const fs = require("fs");
+const STATE_FILE = "/tmp/bot_state.json";
+
+// Persist last action to file so restarts don't re-fire signals
+function getLastAction() {
+  try {
+    const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+    return data.lastAction || null;
+  } catch(e) { return null; }
+}
+
+function saveLastAction(action) {
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ lastAction: action, time: new Date().toISOString() }));
+  } catch(e) { console.error("State save error:", e.message); }
+}
 
 async function checkSignal() {
   try {
@@ -101,24 +114,25 @@ async function checkSignal() {
     const curr  = direction[len - 1];
     const close = parseFloat(candles[len - 1].close);
     const time  = new Date().toISOString();
-    console.log(`[${time}] ${SYMBOL} close: $${close} | dir: ${prev} → ${curr}`);
+    const lastAction = getLastAction();
+    console.log(`[${time}] ${SYMBOL} close: $${close} | dir: ${prev} → ${curr} | last: ${lastAction || "none"}`);
 
-    // BUY — only if prev was bearish, curr is bullish, and last action wasn't already a buy
+    // BUY — Supertrend flipped bullish and we haven't already bought
     if (prev > 0 && curr < 0 && lastAction !== "buy") {
       console.log("BUY signal detected!");
-      lastAction = "buy";
+      saveLastAction("buy");
       await httpPost(WEBHOOK_URL, { action: "buy", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
     }
 
-    // SELL — only if prev was bullish, curr is bearish, and last action wasn't already a sell
+    // SELL — Supertrend flipped bearish and we haven't already sold
     else if (prev < 0 && curr > 0 && lastAction !== "sell") {
       console.log("SELL signal detected!");
-      lastAction = "sell";
+      saveLastAction("sell");
       await httpPost(WEBHOOK_URL, { action: "sell", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
     }
 
     else {
-      console.log(`Holding — no flip detected. Last action: ${lastAction || "none"}`);
+      console.log(`Holding — last action: ${lastAction || "none"}`);
     }
 
   } catch (err) {
