@@ -1,4 +1,4 @@
-   const express = require("express");
+const express = require("express");
 const https   = require("https");
 const { CBAdvancedTradeClient } = require("coinbase-api");
 
@@ -90,7 +90,7 @@ app.get("/setstate", (req, res) => {
     return res.status(400).json({ error: "action must be buy, sell, or none" });
   }
   const fs = require("fs");
-  const STATE_FILE = "/tmp/bot_state.json";
+  const STATE_FILE = "/opt/render/project/src/bot_state.json";
   if (action === "none") {
     try { require("fs").unlinkSync(STATE_FILE); } catch(e) {}
     return res.json({ status: "ok", lastAction: "none", message: "State cleared" });
@@ -102,7 +102,7 @@ app.get("/setstate", (req, res) => {
 // Status endpoint — see current bot state
 app.get("/status", (req, res) => {
   const fs = require("fs");
-  const STATE_FILE = "/tmp/bot_state.json";
+  const STATE_FILE = "/opt/render/project/src/bot_state.json";
   let state = { lastAction: "none" };
   try { state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch(e) {}
   res.json({
@@ -142,7 +142,7 @@ app.post("/webhook", async (req, res) => {
       const xrpBalance = await getXRPBalance();
       const baseSize   = xrpBalance.toFixed(6);
       if (parseFloat(baseSize) < 0.01) {
-        sendTelegram(`⚠️ <b>SELL SKIPPED</b>\nSymbol: ${productId}\nReason: No XRP to sell`);
+        console.log("SELL SKIPPED — no XRP to sell");
         return res.status(200).json({ status: "skipped", reason: "no XRP to sell" });
       }
       result = await placeOrder(productId, "SELL", { base_size: baseSize });
@@ -166,4 +166,4 @@ app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
   sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USDC on 15m chart\nATR: 7 | Factor: 1.0`);
 });
- 
+       
