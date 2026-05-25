@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profits Finder — Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #050810;
+    color: #e8eaf0;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+  }
+  .scanline {
+    position: fixed; inset: 0; pointer-events: none; z-index: 100;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  }
+  header {
+    border-bottom: 1px solid #1a2a4a;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(0,150,234,0.04);
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #0098ea, #00e5ff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; box-shadow: 0 0 16px rgba(0,152,234,0.4);
+  }
+  .logo-title { font-size: 15px; font-weight: bold; letter-spacing: 3px; color: #e8c96a; }
+  .logo-sub { font-size: 10px; color: #4a6a8a; letter-spacing: 2px; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .uptime-label { font-size: 10px; color: #4a6a8a; letter-spacing: 1px; }
+  .uptime-val { font-size: 13px; color: #00e5ff; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #00ff88; box-shadow: 0 0 8px #00ff88;
+    animation: pulse 2s infinite;
+  }
+  .dot.loading { background: #ff9800; box-shadow: 0 0 8px #ff9800; }
+  main { padding: 20px 24px; max-width: 900px; margin: 0 auto; }
+  .stats {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: #080d1a;
+    border: 1px solid #1a2a4a;
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .stat-label { font-size: 9px; color: #4a6a8a; letter-spacing: 2px; margin-bottom: 6px; }
+  .stat-val { font-size: 20px; font-weight: bold; }
+  .section-label {
+    font-size: 9px; color: #4a6a8a; letter-spacing: 3px; margin-bottom: 10px;
+  }
+  .pairs { display: flex; flex-direction: column; gap: 8px; }
+  .pair-card {
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.3s;
+  }
+  .pair-icon {
+    width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .pair-info { flex: 1; min-width: 0; }
+  .pair-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .pair-symbol { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+  .pair-badge {
+    font-size: 9px; padding: 2px 8px; border-radius: 20px;
+    letter-spacing: 1px;
+  }
+  .badge-buy { background: #00ff8822; color: #00ff88; border: 1px solid #00ff8844; }
+  .badge-sell { background: #ff444422; color: #ff4444; border: 1px solid #ff444444; }
+  .badge-none { background: #ffffff11; color: #666; border: 1px solid #333; }
+  .pair-sub { font-size: 10px; color: #4a6a8a; }
+  .pair-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .pair-btn {
+    padding: 5px 12px; font-size: 9px; letter-spacing: 1px;
+    border-radius: 4px; background: transparent;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+  }
+  .pair-btn:hover { background: rgba(255,255,255,0.08) !important; }
+  .pair-btn:disabled { cursor: default; opacity: 0.7; }
+  footer {
+    margin-top: 24px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 9px; color: #2a3a5a; letter-spacing: 1px;
+    border-top: 1px solid #0d1a2a; padding-top: 16px;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: 1fr 1fr; }
+    .stat-card:last-child { grid-column: span 2; }
+    .pair-card { flex-wrap: wrap; }
+    .stat-val { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">📈</div>
+    <div>
+      <div class="logo-title">PROFITS FINDER</div>
+      <div class="logo-sub">ALGORITHMIC TRADING SYSTEM</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div style="text-align:right">
+      <div class="uptime-label">UPTIME</div>
+      <div class="uptime-val" id="uptime">—</div>
+    </div>
+    <div class="dot" id="dot"></div>
+  </div>
+</header>
+
+<main>
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">USDC BALANCE</div>
+      <div class="stat-val" id="usdc" style="color:#e8c96a;text-shadow:0 0 12px #e8c96a">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">XRP HELD</div>
+      <div class="stat-val" id="xrp" style="color:#0098ea;text-shadow:0 0 12px #0098ea">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">ACTIVE POSITIONS</div>
+      <div class="stat-val" id="positions" style="color:#00ff88;text-shadow:0 0 12px #00ff88">—</div>
+    </div>
+  </div>
+
+  <div class="section-label">TRADING PAIRS — 15M SUPERTREND | ATR 7 | FACTOR 1.0</div>
+
+  <div class="pairs" id="pairs"></div>
+
+  <footer>
+    <span>AUTO-REFRESH 30s · COINBASE ADVANCED TRADE</span>
+    <span id="lastupdate">LOADING...</span>
+  </footer>
+</main>
+
+<script>
+const PAIRS = [
+  { symbol: "XRP-USDC",  icon: "✕", color: "#0098ea", bg: "#001a2e" },
+  { symbol: "ADA-USDC",  icon: "₳", color: "#3cc8c8", bg: "#001a1a" },
+  { symbol: "PEPE-USDC", icon: "🐸", color: "#4caf50", bg: "#001a00" },
+  { symbol: "XLM-USDC",  icon: "★", color: "#9b59b6", bg: "#0d001a" },
+  { symbol: "BONK-USDC", icon: "🐕", color: "#ff9800", bg: "#1a0d00" },
+];
+
+function fmt(n) {
+  if (n < 0.0001) return `$${n.toExponential(2)}`;
+  if (n < 0.01)   return `$${n.toFixed(6)}`;
+  if (n < 1)      return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
+
+function timeAgo(t) {
+  if (!t || t === "unknown") return "—";
+  const d = Math.floor((Date.now() - new Date(t)) / 1000);
+  if (d < 60)   return `${d}s ago`;
+  if (d < 3600) return `${Math.floor(d/60)}m ago`;
+  return `${Math.floor(d/3600)}h ago`;
+}
+
+function uptimeStr(s) {
+  const u = Math.floor(parseFloat(s));
+  if (u > 3600) return `${Math.floor(u/3600)}h ${Math.floor((u%3600)/60)}m`;
+  return `${Math.floor(u/60)}m ${u%60}s`;
+}
+
+async function setState(symbol, action, btn) {
+  btn.disabled = true; btn.textContent = "...";
+  await fetch(`/setstate?symbol=${symbol}&action=${action}`);
+  await refresh();
+}
+
+function renderPairs(pairs) {
+  const container = document.getElementById("pairs");
+  container.innerHTML = "";
+  PAIRS.forEach(meta => {
+    const pair   = (pairs || []).find(p => p.symbol === meta.symbol) || {};
+    const action = pair.lastAction || "none";
+    const isBuy  = action === "buy";
+    const isSell = action === "sell";
+
+    const card = document.createElement("div");
+    card.className = "pair-card";
+    card.style.background = meta.bg;
+    card.style.border = `1px solid ${isBuy ? meta.color + "44" : "#1a2a4a"}`;
+    card.style.boxShadow = isBuy ? `0 0 20px ${meta.color}22` : "none";
+
+    card.innerHTML = `
+      <div class="pair-icon" style="background:${meta.color}22;border:1px solid ${meta.color}44;box-shadow:${isBuy ? `0 0 12px ${meta.color}66` : "none"}">${meta.icon}</div>
+      <div class="pair-info">
+        <div class="pair-top">
+          <span class="pair-symbol" style="color:${meta.color}">${meta.symbol}</span>
+          <span class="pair-badge ${isBuy ? "badge-buy" : isSell ? "badge-sell" : "badge-none"}">
+            ${isBuy ? "● IN POSITION" : isSell ? "● WATCHING" : "○ UNKNOWN"}
+          </span>
+        </div>
+        <div class="pair-sub">Last: ${action.toUpperCase()} · ${timeAgo(pair.lastActionTime)}</div>
+      </div>
+      <div class="pair-btns">
+        <button class="pair-btn" style="border:1px solid #00ff8844;color:${isBuy ? "#00ff88" : "#555"};background:${isBuy ? "#00ff8822" : "transparent"}"
+          ${isBuy ? "disabled" : ""} onclick="setState('${meta.symbol}','buy',this)">BUY</button>
+        <button class="pair-btn" style="border:1px solid #ff444444;color:${isSell ? "#ff4444" : "#555"};background:${isSell ? "#ff444422" : "transparent"}"
+          ${isSell ? "disabled" : ""} onclick="setState('${meta.symbol}','sell',this)">SELL</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function refresh() {
+  document.getElementById("dot").className = "dot loading";
+  try {
+    const [status, balances] = await Promise.all([
+      fetch("/status").then(r => r.json()),
+      fetch("/test").then(r => r.json()),
+    ]);
+
+    document.getElementById("uptime").textContent = uptimeStr(status.uptime);
+    document.getElementById("usdc").textContent = `$${parseFloat(balances.usdc_balance).toFixed(2)}`;
+    document.getElementById("xrp").textContent = `${parseFloat(balances.xrp_balance).toFixed(2)} XRP`;
+    const active = (status.pairs || []).filter(p => p.lastAction === "buy").length;
+    document.getElementById("positions").textContent = `${active} / ${PAIRS.length}`;
+    document.getElementById("lastupdate").textContent = `LAST UPDATE: ${new Date().toLocaleTimeString()}`;
+    renderPairs(status.pairs || []);
+  } catch(e) {
+    console.error(e);
+  } finally {
+    document.getElementById("dot").className = "dot";
+  }
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
