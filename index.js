@@ -1,4 +1,4 @@
- const express = require("express");
+      const express = require("express");
 const https   = require("https");
 const { CBAdvancedTradeClient } = require("coinbase-api");
 
@@ -69,7 +69,8 @@ async function placeOrder(productId, side, sizeConfig) {
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.get("/", (req, res) => res.send("Supertrend bot is live ✅"));
+app.get("/", (req, res) => res.sendFile(__dirname + "/dashboard.html"));
+app.get("/health", (req, res) => res.send("Supertrend bot is live ✅"));
 
 app.get("/test", async (req, res) => {
   try {
@@ -169,5 +170,4 @@ app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
   sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching: XRP-USDC | ADA-USDC | PEPE-USDC | XLM-USDC | BONK-USDC\nTimeframe: 15m | ATR: 7 | Factor: 1.0`);
 });
-      
-      
+
