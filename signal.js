@@ -1,10 +1,38 @@
-       const https = require("https");
+         const https = require("https");
+const fs    = require("fs");
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 const WEBHOOK_URL    = process.env.WEBHOOK_URL || "https://supertrend-bot-64nr.onrender.com/webhook";
-const SYMBOL         = process.env.SYMBOL || "XRP-USDC";
 const ATR_PERIOD     = parseInt(process.env.ATR_PERIOD || "7");
 const FACTOR         = parseFloat(process.env.FACTOR || "1.0");
+
+// Multiple trading pairs
+const SYMBOLS = [
+  "XRP-USDC",
+  "ADA-USDC",
+  "PEPE-USDC",
+  "XLM-USDC",
+  "BONK-USDC",
+];
+
+const STATE_DIR = "/opt/render/project/src/";
+
+function getStateFile(symbol) {
+  return `${STATE_DIR}state_${symbol.replace("-", "_")}.json`;
+}
+
+function getLastAction(symbol) {
+  try {
+    const data = JSON.parse(fs.readFileSync(getStateFile(symbol), "utf8"));
+    return data.lastAction || null;
+  } catch(e) { return null; }
+}
+
+function saveLastAction(symbol, action) {
+  try {
+    fs.writeFileSync(getStateFile(symbol), JSON.stringify({ lastAction: action, time: new Date().toISOString() }));
+  } catch(e) { console.error(`State save error [${symbol}]:`, e.message); }
+}
 
 function httpGet(hostname, path) {
   return new Promise((resolve, reject) => {
@@ -36,10 +64,10 @@ function httpPost(url, body) {
   });
 }
 
-async function getCandles() {
+async function getCandles(symbol) {
   const end   = Math.floor(Date.now() / 1000);
   const start = end - (900 * 300);
-  const path  = `/api/v3/brokerage/market/products/${SYMBOL}/candles?start=${start}&end=${end}&granularity=FIFTEEN_MINUTE`;
+  const path  = `/api/v3/brokerage/market/products/${symbol}/candles?start=${start}&end=${end}&granularity=FIFTEEN_MINUTE`;
   const data  = await httpGet("api.coinbase.com", path);
   return (data.candles || []).reverse();
 }
@@ -64,9 +92,9 @@ function calcATR(candles, period) {
 }
 
 function calcSupertrend(candles, factor, period) {
-  const atr       = calcATR(candles, period);
-  const direction = new Array(candles.length).fill(1);
-  const supertrend= new Array(candles.length).fill(0);
+  const atr        = calcATR(candles, period);
+  const direction  = new Array(candles.length).fill(1);
+  const supertrend = new Array(candles.length).fill(0);
   for (let i = period + 1; i < candles.length; i++) {
     const high  = parseFloat(candles[i].high);
     const low   = parseFloat(candles[i].low);
@@ -87,63 +115,48 @@ function calcSupertrend(candles, factor, period) {
   return { direction, supertrend };
 }
 
-const fs = require("fs");
-const STATE_FILE = "/opt/render/project/src/bot_state.json";
-
-// Persist last action to file so restarts don't re-fire signals
-function getLastAction() {
+async function checkSymbol(symbol) {
   try {
-    const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-    return data.lastAction || null;
-  } catch(e) { return null; }
-}
+    const candles = await getCandles(symbol);
+    if (candles.length < ATR_PERIOD + 2) return;
 
-function saveLastAction(action) {
-  try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ lastAction: action, time: new Date().toISOString() }));
-  } catch(e) { console.error("State save error:", e.message); }
-}
-
-async function checkSignal() {
-  try {
-    const candles = await getCandles();
-    if (candles.length < ATR_PERIOD + 2) { console.log("Not enough candles"); return; }
     const { direction } = calcSupertrend(candles, FACTOR, ATR_PERIOD);
     const len   = direction.length;
     const prev  = direction[len - 2];
     const curr  = direction[len - 1];
     const close = parseFloat(candles[len - 1].close);
     const time  = new Date().toISOString();
-    const lastAction = getLastAction();
-    console.log(`[${time}] ${SYMBOL} close: $${close} | dir: ${prev} → ${curr} | last: ${lastAction || "none"}`);
+    const lastAction = getLastAction(symbol);
 
-    // BUY — MUST be a real flip: prev bearish AND curr bullish
-    // prev > 0 = bearish, curr < 0 = bullish
+    console.log(`[${symbol}] $${close} | dir: ${prev}→${curr} | last: ${lastAction || "none"}`);
+
     const isBuyFlip  = prev > 0 && curr < 0;
     const isSellFlip = prev < 0 && curr > 0;
 
     if (isBuyFlip && lastAction !== "buy") {
-      console.log("BUY signal detected! Real flip confirmed.");
-      saveLastAction("buy");
-      await httpPost(WEBHOOK_URL, { action: "buy", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
+      console.log(`[${symbol}] BUY signal!`);
+      saveLastAction(symbol, "buy");
+      await httpPost(WEBHOOK_URL, { action: "buy", symbol: symbol.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
+    } else if (isSellFlip && lastAction !== "sell") {
+      console.log(`[${symbol}] SELL signal!`);
+      saveLastAction(symbol, "sell");
+      await httpPost(WEBHOOK_URL, { action: "sell", symbol: symbol.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
+    } else {
+      console.log(`[${symbol}] Holding — no flip`);
     }
-    else if (isSellFlip && lastAction !== "sell") {
-      console.log("SELL signal detected! Real flip confirmed.");
-      saveLastAction("sell");
-      await httpPost(WEBHOOK_URL, { action: "sell", symbol: SYMBOL.replace("-", ""), price: close, time, secret: WEBHOOK_SECRET });
-    }
-    else if (!isBuyFlip && !isSellFlip) {
-      console.log(`No flip — trending. Last action: ${lastAction || "none"}`);
-    }
-    else {
-      console.log(`Flip detected but already acted on it. Last action: ${lastAction || "none"}`);
-    }
-
   } catch (err) {
-    console.error("Signal check error:", err.message);
+    console.error(`[${symbol}] Error:`, err.message);
   }
 }
 
-checkSignal();
-setInterval(checkSignal, 5 * 60 * 1000);
-console.log(`Signal checker running | ${SYMBOL} | ATR:${ATR_PERIOD} Factor:${FACTOR}`);
+async function checkAllSymbols() {
+  console.log(`\n--- Checking ${SYMBOLS.length} pairs [${new Date().toISOString()}] ---`);
+  for (const symbol of SYMBOLS) {
+    await checkSymbol(symbol);
+    await new Promise(r => setTimeout(r, 500)); // small delay between calls
+  }
+}
+
+checkAllSymbols();
+setInterval(checkAllSymbols, 5 * 60 * 1000);
+console.log(`Multi-pair signal checker running | ${SYMBOLS.join(", ")} | ATR:${ATR_PERIOD} Factor:${FACTOR}`);
