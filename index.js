@@ -1,4 +1,4 @@
-const express = require("express");
+ const express = require("express");
 const https   = require("https");
 const { CBAdvancedTradeClient } = require("coinbase-api");
 
@@ -83,35 +83,38 @@ app.get("/test", async (req, res) => {
 
 
 
-// Manual state control — sync bot with chart after restart
+// Manual state control — /setstate?symbol=XRP-USDC&action=buy
 app.get("/setstate", (req, res) => {
-  const { action } = req.query;
+  const { action, symbol } = req.query;
   if (!["buy", "sell", "none"].includes(action)) {
     return res.status(400).json({ error: "action must be buy, sell, or none" });
   }
-  const fs = require("fs");
-  const STATE_FILE = "/opt/render/project/src/bot_state.json";
+  const fs       = require("fs");
+  const sym      = symbol || "XRP-USDC";
+  const STATE_FILE = `/opt/render/project/src/state_${sym.replace("-", "_")}.json`;
   if (action === "none") {
-    try { require("fs").unlinkSync(STATE_FILE); } catch(e) {}
-    return res.json({ status: "ok", lastAction: "none", message: "State cleared" });
+    try { fs.unlinkSync(STATE_FILE); } catch(e) {}
+    return res.json({ status: "ok", symbol: sym, lastAction: "none", message: "State cleared" });
   }
   fs.writeFileSync(STATE_FILE, JSON.stringify({ lastAction: action, time: new Date().toISOString() }));
-  res.json({ status: "ok", lastAction: action, message: `State set to ${action}` });
+  res.json({ status: "ok", symbol: sym, lastAction: action, message: `${sym} state set to ${action}` });
 });
 
-// Status endpoint — see current bot state
+// Status — shows all pairs
 app.get("/status", (req, res) => {
-  const fs = require("fs");
-  const STATE_FILE = "/opt/render/project/src/bot_state.json";
-  let state = { lastAction: "none" };
-  try { state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch(e) {}
+  const fs      = require("fs");
+  const SYMBOLS = ["XRP-USDC", "ADA-USDC", "PEPE-USDC", "XLM-USDC", "BONK-USDC"];
+  const pairs   = SYMBOLS.map(sym => {
+    const f = `/opt/render/project/src/state_${sym.replace("-", "_")}.json`;
+    let state = { lastAction: "none", time: "unknown" };
+    try { state = JSON.parse(fs.readFileSync(f, "utf8")); } catch(e) {}
+    return { symbol: sym, lastAction: state.lastAction || "none", lastActionTime: state.time || "unknown" };
+  });
   res.json({
     status: "live",
-    symbol: process.env.SYMBOL || "XRP-USDC",
-    lastAction: state.lastAction || "none",
-    lastActionTime: state.time || "unknown",
-    tradeSize: process.env.TRADE_SIZE_USD || "dynamic 5%",
     uptime: process.uptime() + "s",
+    tradeSize: "dynamic 5% per signal",
+    pairs,
   });
 });
 
@@ -130,7 +133,7 @@ app.post("/webhook", async (req, res) => {
       const usdcBalance = await getUSDCBalance();
       const quoteSize   = (usdcBalance * 0.05).toFixed(2);
       if (parseFloat(quoteSize) < 1) {
-        sendTelegram(`⚠️ <b>BUY SKIPPED</b>\nSymbol: ${productId}\nReason: USDC balance too low ($${usdcBalance})`);
+        console.log(`BUY SKIPPED [${productId}] — balance too low`);
         return res.status(200).json({ status: "skipped", reason: "balance too low" });
       }
       result = await placeOrder(productId, "BUY", { quote_size: quoteSize });
@@ -164,6 +167,7 @@ require("./signal.js");
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Bot live on port ${PORT}`);
-  sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching XRP-USDC on 15m chart\nATR: 7 | Factor: 1.0`);
+  sendTelegram(`🤖 <b>Supertrend Bot Started</b>\nWatching: XRP-USDC | ADA-USDC | PEPE-USDC | XLM-USDC | BONK-USDC\nTimeframe: 15m | ATR: 7 | Factor: 1.0`);
 });
-       
+      
+      
